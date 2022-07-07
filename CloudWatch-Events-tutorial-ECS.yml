@@ -1,0 +1,595 @@
+# aws cloudformation create-stack --template-body file:///Users/dubaria/Desktop/Excercises/ECS/ECS-Docs/CloudWatch-Events-tutorial-ECS/CloudWatch-Events-tutorial-ECS.yml --region us-east-2 --capabilities CAPABILITY_IAM --stack-name CloudWatch-Events-tutorial-ECS
+# aws cloudformation update-stack --template-body file:///Users/dubaria/Desktop/Excercises/ECS/ECS-Docs/CloudWatch-Events-tutorial-ECS/CloudWatch-Events-tutorial-ECS.yml --region us-east-2 --capabilities CAPABILITY_IAM --stack-name CloudWatch-Events-tutorial-ECS
+# aws cloudformation delete-stack --region us-east-2 --stack-name CloudWatch-Events-tutorial-ECS
+# aws s3 cp Test.txt s3://cloudwatch-events-tutorial-ecs-821xxxxxx100-us-east-2
+
+
+Description:  This template deploys a VPC, with a pair of public and private subnets spread
+  across two Availability Zones. It deploys an internet gateway, with a default
+  route on the public subnets. It deploys a pair of NAT gateways (one in each AZ),
+  and default routes for them in the private subnets.
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: Lab
+
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.192.0.0/16
+
+  PublicSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.10.0/24
+
+  PublicSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.11.0/24
+
+  PrivateSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.20.0/24
+
+  PrivateSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.21.0/24
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Routes (AZ1)
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  NoIngressSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "no-ingress-sg"
+      GroupDescription: "Security group with no ingress rule"
+      VpcId: !Ref VPC
+
+  CloudWatchEventsTutorialECSBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join
+        - '-'
+        - - cloudwatch-events-tutorial-ecs
+          - !Ref 'AWS::AccountId'
+          - !Ref 'AWS::Region'
+      # BucketEncryption:
+      #   ServerSideEncryptionConfiguration:
+      #     - ServerSideEncryptionByDefault:
+      #         SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: TRUE
+        BlockPublicPolicy: TRUE
+        IgnorePublicAcls: TRUE
+        RestrictPublicBuckets: TRUE
+
+  # CloudWatchEventsTutorialECSBucketPolicy:
+  #   Type: 'AWS::S3::BucketPolicy'
+  #   Properties:
+  #     Bucket: !Ref CloudWatchEventsTutorialECSBucket
+  #     PolicyDocument:
+  #       Statement:
+  #         - Action: 's3:PutObject'
+  #           Effect: 'Allow'
+  #           Resource: !Join
+  #             - ''
+  #             - - 'arn:aws:s3:::'
+  #               - !Ref CloudWatchEventsTutorialECSBucket
+  #               - /*
+  #           Principal: 
+  #             AWS: !Join
+  #               - ''
+  #               - - 'arn:aws:iam::'
+  #                 - !Ref "AWS::AccountId"
+  #                 - ':root'
+  #         - Action: 's3:PutObject'
+  #           Effect: 'Allow'
+  #           Resource: !Join
+  #             - ''
+  #             - - 'arn:aws:s3:::'
+  #               - !Ref CloudWatchEventsTutorialECSBucket
+  #               - /*
+  #           Principal:
+  #             Service: 
+  #               - delivery.logs.amazonaws.com
+  #               - ec2.amazonaws.com
+  #         - Action: 's3:GetBucketAcl'
+  #           Effect: 'Allow'
+  #           Resource: !Join
+  #             - ''
+  #             - - 'arn:aws:s3:::'
+  #               - !Ref CloudWatchEventsTutorialECSBucket
+  #           Principal:
+  #             Service: 
+  #               - delivery.logs.amazonaws.com
+  #               - ec2.amazonaws.com  
+
+  CloudTrailLogBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join
+        - '-'
+        - - cloudtrail-log-bucket
+          - !Ref 'AWS::AccountId'
+          - !Ref 'AWS::Region'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  CloudTrailLogBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref CloudTrailLogBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:GetBucketAcl'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref CloudTrailLogBucket
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:PutObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref CloudTrailLogBucket
+                - '/AWSLogs/'
+                - !Ref 'AWS::AccountId'
+                - '/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': bucket-owner-full-control
+
+  CloudWatchEventsTutorialECSCloudTrail:
+    DependsOn:
+      - CloudTrailLogBucketPolicy
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      S3BucketName: !Ref CloudTrailLogBucket
+      # S3KeyPrefix: "CloudWatchEventsTutorial"
+      IsLogging: true
+      TrailName:  !Join
+        - '-'
+        - - cloudwatch-events-tutorial-ecs
+          - !Ref 'AWS::AccountId'
+          - !Ref 'AWS::Region'
+      # EnableLogFileValidation: true
+      # IncludeGlobalServiceEvents: true
+      # IsMultiRegionTrail: true
+      # CloudWatchLogsLogGroupArn:
+      #   Fn::ImportValue: "TrailLogGroupTestArn"
+      # CloudWatchLogsRoleArn:
+      #   Fn::ImportValue: "TrailLogGroupRoleTestArn"
+      # KMSKeyId:
+      #   Fn::ImportValue: TrailKeyTest
+      Tags:
+        - Key: "TagKeyIntTest"
+          Value: "TagValueIntTest"
+        - Key: "TagKeyIntTest2"
+          Value: "TagValueIntTest2"
+      # SnsTopicName:
+      #   Fn::ImportValue: TrailTopicTest
+      EventSelectors:
+        - DataResources:
+            - Type: AWS::S3::Object
+              Values:
+                # - !Sub "arn:${AWS::Partition}:s3:::"
+                - !Join [ '' , [ !GetAtt CloudWatchEventsTutorialECSBucket.Arn , '/' ] ]
+          IncludeManagementEvents: false
+          ReadWriteType: WriteOnly
+
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Ref AWS::StackName
+
+  CloudwatchLogsGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Join 
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - '/ecs/amazonlinux'
+      RetentionInDays: 7
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      # Policies:
+      #   - PolicyName: BackendECSTaskRolePolicy
+      #     PolicyDocument:
+      #       Statement:
+      #       - Effect: Allow
+      #         Action:
+      #           # Allow the ECS Tasks to only Read from S3
+      #           - 's3:Get*'
+      #           - 's3:List*'
+      #           # Allow the ECS tasks to get Secrets from SSM
+      #           - 'ssm:Describe*'
+      #           - 'ssm:Get*'
+      #           - 'ssm:List*'
+      #         Resource: '*'
+
+  TaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: !Ref ECSCluster
+      Memory: 512
+      Cpu: 256
+      NetworkMode: awsvpc
+      ContainerDefinitions:
+        - Image: amazonlinux:latest
+          Name: amazonlinux
+          EntryPoint: 
+            - "/bin/sh"
+            - "-c"
+          Command: 
+            - printenv | grep -i s3
+          Memory: 512
+          Cpu: 256
+          # PortMappings:
+          #   - ContainerPort: 80
+          #     HostPort: 80
+          #     Protocol: tcp
+          Environment: 
+            - Name: S3-Name
+              Value: S3-Value
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-stream-prefix: amazonlinux
+              awslogs-create-group: true
+      RequiresCompatibilities: 
+        - "FARGATE" 
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+
+  PutObjectEventRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow 
+            Principal:
+              Service: [events.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Path: /
+      # ManagedPolicyArns: 
+      #   - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Policies:
+        - PolicyName: PutObjectEventRulePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:RunTask'
+                Resource:
+                  - '*'
+                Condition:
+                  ArnLike:
+                    'ecs:cluster': !GetAtt ECSCluster.Arn
+                # Resource: !Join [ '' , [ 'arn:aws:ecs:*:' , !Ref AWS::AccountId , ':task-definition/' ,  !Ref ECSCluster ] ]
+                # Condition:
+                #   ArnLike:
+                #     'ecs:cluster': !Join [ '' , [ 'arn:aws:ecs:*:' , !Ref AWS::AccountId , ':cluster/' ,  !Ref ECSCluster ] ]
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource:
+                  - '*'
+                Condition:
+                  StringLike:
+                    'iam:PassedToService': ecs-tasks.amazonaws.com
+
+  PutObjectEventRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: PutObject Event Rule
+      State: "ENABLED"
+      EventPattern: 
+        source:
+          - aws.s3
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - s3.amazonaws.com
+          eventName:
+            - PutObject
+          requestParameters:
+            bucketName:
+              - !Ref CloudWatchEventsTutorialECSBucket
+      Targets: 
+        - Id: '1'
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt PutObjectEventRuleRole.Arn
+          EcsParameters:
+            TaskDefinitionArn: !Ref TaskDefinition
+            TaskCount: 1
+            LaunchType: FARGATE
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                Subnets:
+                  - !Ref PrivateSubnet1
+                  - !Ref PrivateSubnet2
+                AssignPublicIp: DISABLED
+            Group: !Ref ECSCluster
+          InputTransformer:
+            InputPathsMap:
+              s3-bucket: $.detail.requestParameters.bucketName
+              s3-key: $.detail.requestParameters.key
+              # Detail: $.detail
+            InputTemplate: |
+                {
+                    "containerOverrides": [
+                        {
+                            "name": "amazonlinux",
+                            "environment": [
+                                {
+                                    "name": "S3-BUCKET",
+                                    "value": "<s3-bucket>"
+                                },
+                                {
+                                    "name": "S3-KEY",
+                                    "value": "<s3-key>"
+                                }
+                            ]
+                        }
+                    ]
+                }
+
+              # {
+              #     "containerOverrides": [
+              #         {
+              #             "name": "amazonlinux",
+              #             "environment": [
+              #                 {
+              #                     "name": "s3-bucket",
+              #                     "value": "<s3-bucket>"
+              #                 },
+              #                 {
+              #                     "name": "s3-key",
+              #                     "value": "<s3-key>"
+              #                 },
+              #                 {
+              #                     "name": "originalEvent",
+              #                     "value": "<aws.events.event>"
+              #                 },
+              #                 {
+              #                     "name": "exactPayloadOfAnEventAsString",
+              #                     "value": "<aws.events.event.json>"
+              #                 }
+              #             ]
+              #         }
+              #     ]
+              # }
+
+Outputs:
+  VPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+
+  PublicSubnets:
+    Description: A list of the public subnets
+    Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]]
+
+  PrivateSubnets:
+    Description: A list of the private subnets
+    Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+
+  PublicSubnet1:
+    Description: A reference to the public subnet in the 1st Availability Zone
+    Value: !Ref PublicSubnet1
+
+  PublicSubnet2:
+    Description: A reference to the public subnet in the 2nd Availability Zone
+    Value: !Ref PublicSubnet2
+
+  PrivateSubnet1:
+    Description: A reference to the private subnet in the 1st Availability Zone
+    Value: !Ref PrivateSubnet1
+
+  PrivateSubnet2:
+    Description: A reference to the private subnet in the 2nd Availability Zone
+    Value: !Ref PrivateSubnet2
+
+  NoIngressSecurityGroup:
+    Description: Security group with no ingress rule
+    Value: !Ref NoIngressSecurityGroup
