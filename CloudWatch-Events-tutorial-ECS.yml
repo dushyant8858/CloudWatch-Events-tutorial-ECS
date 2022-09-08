@@ -241,7 +241,7 @@ Resources:
   #             - - 'arn:aws:s3:::'
   #               - !Ref CloudWatchEventsTutorialECSBucket
   #               - /*
-  #           Principal: 
+  #           Principal:
   #             AWS: !Join
   #               - ''
   #               - - 'arn:aws:iam::'
@@ -255,7 +255,7 @@ Resources:
   #               - !Ref CloudWatchEventsTutorialECSBucket
   #               - /*
   #           Principal:
-  #             Service: 
+  #             Service:
   #               - delivery.logs.amazonaws.com
   #               - ec2.amazonaws.com
   #         - Action: 's3:GetBucketAcl'
@@ -265,9 +265,9 @@ Resources:
   #             - - 'arn:aws:s3:::'
   #               - !Ref CloudWatchEventsTutorialECSBucket
   #           Principal:
-  #             Service: 
+  #             Service:
   #               - delivery.logs.amazonaws.com
-  #               - ec2.amazonaws.com  
+  #               - ec2.amazonaws.com
 
   CloudTrailLogBucket:
     Type: 'AWS::S3::Bucket'
@@ -294,7 +294,7 @@ Resources:
             Principal:
               Service: cloudtrail.amazonaws.com
             Action: 's3:GetBucketAcl'
-            Resource: !Join 
+            Resource: !Join
               - ''
               - - 'arn:aws:s3:::'
                 - !Ref CloudTrailLogBucket
@@ -303,7 +303,7 @@ Resources:
             Principal:
               Service: cloudtrail.amazonaws.com
             Action: 's3:PutObject'
-            Resource: !Join 
+            Resource: !Join
               - ''
               - - 'arn:aws:s3:::'
                 - !Ref CloudTrailLogBucket
@@ -360,7 +360,7 @@ Resources:
   CloudwatchLogsGroup:
     Type: 'AWS::Logs::LogGroup'
     Properties:
-      LogGroupName: !Join 
+      LogGroupName: !Join
         - '-'
         - - !Ref 'AWS::StackName'
           - '/ecs/amazonlinux'
@@ -376,7 +376,7 @@ Resources:
               Service: [ecs-tasks.amazonaws.com]
             Action: ['sts:AssumeRole']
       Path: /
-      ManagedPolicyArns: 
+      ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
   ECSTaskRole:
@@ -389,7 +389,7 @@ Resources:
               Service: [ecs-tasks.amazonaws.com]
             Action: ['sts:AssumeRole']
       Path: /
-      ManagedPolicyArns: 
+      ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
       # Policies:
       #   - PolicyName: BackendECSTaskRolePolicy
@@ -416,10 +416,10 @@ Resources:
       ContainerDefinitions:
         - Image: amazonlinux:latest
           Name: amazonlinux
-          EntryPoint: 
+          EntryPoint:
             - "/bin/sh"
             - "-c"
-          Command: 
+          Command:
             - printenv | grep -i s3
           Memory: 512
           Cpu: 256
@@ -427,9 +427,9 @@ Resources:
           #   - ContainerPort: 80
           #     HostPort: 80
           #     Protocol: tcp
-          Environment: 
+          Environment:
             - Name: S3-Name
-              Value: S3-Value
+              Value: S3-File-Name
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -437,8 +437,8 @@ Resources:
               awslogs-group: !Ref CloudwatchLogsGroup
               awslogs-stream-prefix: amazonlinux
               awslogs-create-group: true
-      RequiresCompatibilities: 
-        - "FARGATE" 
+      RequiresCompatibilities:
+        - "FARGATE"
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       TaskRoleArn: !GetAtt ECSTaskRole.Arn
 
@@ -447,12 +447,12 @@ Resources:
     Properties:
       AssumeRolePolicyDocument:
         Statement:
-          - Effect: Allow 
+          - Effect: Allow
             Principal:
               Service: [events.amazonaws.com]
             Action: ['sts:AssumeRole']
       Path: /
-      # ManagedPolicyArns: 
+      # ManagedPolicyArns:
       #   - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
       Policies:
         - PolicyName: PutObjectEventRulePolicy
@@ -462,7 +462,7 @@ Resources:
                 Action:
                   - 'ecs:RunTask'
                 Resource:
-                  - '*'
+                  - !Join [ '' , [ 'arn:aws:ecs:*:' , !Ref AWS::AccountId , ':task-definition/' ,  '*' ] ]
                 Condition:
                   ArnLike:
                     'ecs:cluster': !GetAtt ECSCluster.Arn
@@ -473,17 +473,18 @@ Resources:
               - Effect: Allow
                 Action: 'iam:PassRole'
                 Resource:
-                  - '*'
+                  - !GetAtt ECSTaskExecutionRole.Arn
+                  - !GetAtt ECSTaskRole.Arn
                 Condition:
                   StringLike:
                     'iam:PassedToService': ecs-tasks.amazonaws.com
 
-  PutObjectEventRule: 
+  PutObjectEventRule:
     Type: AWS::Events::Rule
-    Properties: 
+    Properties:
       Description: PutObject Event Rule
       State: "ENABLED"
-      EventPattern: 
+      EventPattern:
         source:
           - aws.s3
         detail-type:
@@ -496,11 +497,12 @@ Resources:
           requestParameters:
             bucketName:
               - !Ref CloudWatchEventsTutorialECSBucket
-      Targets: 
+      Targets:
         - Id: '1'
           Arn: !GetAtt ECSCluster.Arn
           RoleArn: !GetAtt PutObjectEventRuleRole.Arn
           EcsParameters:
+            # TaskDefinitionArn: !Join [ '' , [ 'arn:aws:ecs:*:' , !Ref AWS::AccountId , ':task-definition/' ,  !Ref ECSCluster ] ]
             TaskDefinitionArn: !Ref TaskDefinition
             TaskCount: 1
             LaunchType: FARGATE
@@ -523,11 +525,11 @@ Resources:
                             "name": "amazonlinux",
                             "environment": [
                                 {
-                                    "name": "S3-BUCKET",
+                                    "name": "S3-BUCKET-NAME",
                                     "value": "<s3-bucket>"
                                 },
                                 {
-                                    "name": "S3-KEY",
+                                    "name": "S3-FILE-UPLOADED",
                                     "value": "<s3-key>"
                                 }
                             ]
